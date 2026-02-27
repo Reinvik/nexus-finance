@@ -1,0 +1,23 @@
+{
+    "version": 2,
+    "buildCommand": "npm run build",
+    "outputDirectory": "dist",
+    "rewrites": [
+        {
+            "source": "/api/fintoc/create-link-intent",
+            "destination": "/api/fintoc"
+        },
+        {
+            "source": "/api/fintoc/webhook",
+            "destination": "/api/fintoc"
+        },
+        {
+            "source": "/api/fintoc/sync",
+            "destination": "/api/fintoc"
+        },
+        {
+            "source": "/(.*)",
+            "destination": "/index.html"
+        }
+    ]
+}
