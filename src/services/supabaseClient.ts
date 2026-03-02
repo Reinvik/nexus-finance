@@ -1,12 +1,14 @@
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://su-proyecto.supabase.co';
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'su-clave-anon';
+const rawUrl = import.meta.env.VITE_SUPABASE_URL?.trim() || '';
+const rawKey = import.meta.env.VITE_SUPABASE_ANON_KEY?.trim() || '';
 
-console.log('--- Supabase Config ---');
-console.log('URL:', supabaseUrl);
-console.log('Key length:', supabaseAnonKey.length);
-console.log('Key starts with:', supabaseAnonKey.substring(0, 10));
+// Normalize URL: ensure it starts with https://
+const supabaseUrl = rawUrl.startsWith('http') ? rawUrl : rawUrl ? `https://${rawUrl}` : 'https://placeholder.supabase.co';
+const supabaseAnonKey = rawKey || 'placeholder-key';
+
+console.log('[Supabase] URL configured:', supabaseUrl.includes('placeholder') ? '❌ MISSING - set VITE_SUPABASE_URL in Vercel' : '✅ ' + supabaseUrl);
+console.log('[Supabase] Key configured:', supabaseAnonKey.length > 20 ? '✅' : '❌ MISSING - set VITE_SUPABASE_ANON_KEY in Vercel');
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
