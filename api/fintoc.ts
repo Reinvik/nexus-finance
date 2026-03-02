@@ -1,57 +1,73 @@
-import type { VercelRequest, VercelResponse } from '@vercel/node';
 import axios from 'axios';
 import { createClient } from '@supabase/supabase-js';
+import type { VercelRequest, VercelResponse } from '@vercel/node';
 
-const supabase = createClient(
-    process.env.VITE_SUPABASE_URL || '',
-    process.env.VITE_SUPABASE_ANON_KEY || ''
-);
-
+const SUPABASE_URL = process.env.VITE_SUPABASE_URL || '';
+const SUPABASE_KEY = process.env.VITE_SUPABASE_ANON_KEY || '';
 const FINTOC_SECRET_KEY = process.env.FINTOC_API_KEY || '';
 const APP_URL = process.env.APP_URL || 'https://finance.nexusnetwork.cl';
 
+// Diagnose missing env vars early
+console.log('[api/fintoc] FINTOC_API_KEY present:', !!FINTOC_SECRET_KEY);
+console.log('[api/fintoc] SUPABASE_URL present:', !!SUPABASE_URL);
+
+const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+
 async function syncTransactions(userId: string, linkToken: string) {
-    const accountsRes = await axios.get(
-        `https://api.fintoc.com/v1/links/${linkToken}/accounts`,
-        { headers: { Authorization: FINTOC_SECRET_KEY } }
-    );
-
-    const accounts = accountsRes.data;
-    if (!accounts || accounts.length === 0) return;
-
-    let totalSynced = 0;
-    for (const account of accounts) {
-        const movementsRes = await axios.get(
-            `https://api.fintoc.com/v1/links/${linkToken}/accounts/${account.id}/movements`,
+    try {
+        const accountsRes = await axios.get(
+            `https://api.fintoc.com/v1/links/${linkToken}/accounts`,
             { headers: { Authorization: FINTOC_SECRET_KEY } }
         );
 
-        const movements = movementsRes.data;
-        if (!movements || movements.length === 0) continue;
+        const accounts = accountsRes.data;
+        if (!accounts || accounts.length === 0) return;
 
-        const dbTransactions = movements.map((m: any) => ({
-            user_id: userId,
-            fintoc_id: m.id,
-            descripcion: m.description || 'Sin descripción',
-            monto: Math.abs(m.amount),
-            tipo: m.amount > 0 ? 'abono' : 'cargo',
-            fecha: m.post_date ? m.post_date.split('T')[0] : new Date().toISOString().split('T')[0],
-            estado_revision: 'pendiente'
-        }));
+        let totalSynced = 0;
+        for (const account of accounts) {
+            const movementsRes = await axios.get(
+                `https://api.fintoc.com/v1/links/${linkToken}/accounts/${account.id}/movements`,
+                { headers: { Authorization: FINTOC_SECRET_KEY } }
+            );
 
-        await supabase
-            .from('transacciones')
-            .upsert(dbTransactions, { onConflict: 'fintoc_id' });
+            const movements = movementsRes.data;
+            if (!movements || movements.length === 0) continue;
 
-        totalSynced += dbTransactions.length;
+            const dbRows = movements.map((m: any) => ({
+                user_id: userId,
+                fintoc_id: m.id,
+                descripcion: m.description || 'Sin descripción',
+                monto: Math.abs(m.amount),
+                tipo: m.amount > 0 ? 'abono' : 'cargo',
+                fecha: m.post_date ? m.post_date.split('T')[0] : new Date().toISOString().split('T')[0],
+                estado_revision: 'pendiente'
+            }));
+
+            await supabase
+                .from('transacciones')
+                .upsert(dbRows, { onConflict: 'fintoc_id' });
+
+            totalSynced += dbRows.length;
+        }
+
+        console.log(`[Sync] ${totalSynced} transactions synced`);
+    } catch (e: any) {
+        console.error('[Sync Error]', e.response?.data || e.message);
     }
-
-    console.log(`[Sync] ${totalSynced} transactions synced`);
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-    // POST /api/fintoc/create-link-intent
-    if (req.method === 'POST' && !req.url?.includes('webhook') && !req.url?.includes('sync')) {
+    // Set JSON header always
+    res.setHeader('Content-Type', 'application/json');
+
+    const url = req.url || '';
+    const method = req.method || '';
+
+    // POST /api/fintoc/create-link-intent  (routed to /api/fintoc)
+    if (method === 'POST' && !url.includes('webhook') && !url.includes('sync')) {
+        if (!FINTOC_SECRET_KEY) {
+            return res.status(500).json({ error: 'FINTOC_API_KEY not configured in Vercel env vars' });
+        }
         try {
             const webhookUrl = `${APP_URL}/api/fintoc/webhook`;
             const response = await axios.post(
@@ -61,14 +77,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             );
             return res.json({ widget_token: response.data.widget_token });
         } catch (e: any) {
+            console.error('[link_intent error]', e.response?.data || e.message);
             return res.status(500).json({ error: e.response?.data || e.message });
         }
     }
 
     // POST /api/fintoc/webhook
-    if (req.method === 'POST' && req.url?.includes('webhook')) {
+    if (method === 'POST' && url.includes('webhook')) {
         try {
-            const { link_token, holder_id } = req.body;
+            const { link_token, holder_id } = req.body || {};
             if (!link_token) return res.status(400).json({ error: 'Missing link_token' });
 
             const userId = '00000000-0000-0000-0000-000000000000';
@@ -86,9 +103,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     // GET /api/fintoc/sync
-    if (req.method === 'GET' && req.url?.includes('sync')) {
+    if (method === 'GET' && url.includes('sync')) {
         try {
-            const userId = (req.query.userId as string) || '00000000-0000-0000-0000-000000000000';
+            const userId = (req.query?.userId as string) || '00000000-0000-0000-0000-000000000000';
             const { data: connections } = await supabase
                 .from('conexiones_bancarias')
                 .select('link_token')
@@ -105,6 +122,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         } catch (e: any) {
             return res.status(500).json({ error: e.message });
         }
+    }
+
+    // Health check GET /api/fintoc
+    if (method === 'GET') {
+        return res.json({
+            status: 'ok',
+            fintoc_key: FINTOC_SECRET_KEY ? 'present' : 'MISSING',
+            supabase_url: SUPABASE_URL ? 'present' : 'MISSING'
+        });
     }
 
     return res.status(405).json({ error: 'Method not allowed' });
