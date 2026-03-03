@@ -2,7 +2,7 @@ import React from 'react';
 import { motion } from 'motion/react';
 import { PieChart as PieChartIcon, Target, Sparkles } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
-import { SavingsRecommendation, Transaction, ClassificationResult } from '../services/geminiService';
+import { SavingsRecommendation, Transaction, ClassificationResult, CategoryConfig } from '../services/geminiService';
 import { FinancialStrategies } from './FinancialStrategies';
 import { SalaryPeriod } from '../services/periodService';
 

@@ -17,6 +17,7 @@ import { TransactionsModule } from './components/TransactionsModule';
 import { SavingsGuard } from './components/SavingsGuard';
 import { PeriodSelector } from './components/PeriodSelector';
 import { CategoryManager } from './components/CategoryManager';
+import { Login } from './components/Login';
 import { supabase, DatabaseTransaction } from './services/supabaseClient';
 import { getFintoc } from '@fintoc/fintoc-js';
 
@@ -40,13 +41,20 @@ function loadCategories(): CategoryConfig[] {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (saved) {
       const parsed = JSON.parse(saved);
-      // Migrate old string arrays to full objects if needed
-      if (Array.isArray(parsed) && typeof parsed[0] === 'string') {
-        return parsed.map(name => ({ name, bucket: 'Ignorar', jar: 'Ignorar' } as CategoryConfig));
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        // old array of strings migration
+        if (typeof parsed[0] === 'string') {
+          return parsed.map((name: string) => ({ name, bucket: 'Ignorar', jar: 'Ignorar' } as CategoryConfig));
+        }
+        // array of objects (CategoryConfig) validation
+        if (typeof parsed[0] === 'object' && parsed[0] !== null && 'name' in parsed[0]) {
+          return parsed as CategoryConfig[];
+        }
       }
-      return parsed as CategoryConfig[];
     }
-  } catch { /* ignore */ }
+  } catch (err) {
+    console.error("Local storage categories parse error", err);
+  }
   return DEFAULT_CATEGORIES;
 }
 
@@ -58,6 +66,7 @@ const COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'
 const USER_ID = '00000000-0000-0000-0000-000000000000';
 
 export default function App() {
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [categories, setCategories] = useState<CategoryConfig[]>(loadCategories);
   const [showCategoryManager, setShowCategoryManager] = useState(false);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -262,6 +271,12 @@ export default function App() {
     return Object.entries(data).map(([name, value]) => ({ name, value }));
   }, [periodTransactions, classifications]);
 
+  const totalSavings = React.useMemo(() => {
+    const income = periodTransactions.filter(t => t.tipo === 'abono').reduce((acc, t) => acc + t.monto, 0);
+    const expenses = periodTransactions.filter(t => t.tipo === 'cargo').reduce((acc, t) => acc + t.monto, 0);
+    return income - expenses;
+  }, [periodTransactions]);
+
   const budgetData = useMemo(() =>
     Object.entries(budgets).map(([name, limit]) => {
       const spent = periodTransactions
@@ -274,11 +289,9 @@ export default function App() {
     [periodTransactions, classifications, budgets]
   );
 
-  const totalSavings = useMemo(() => {
-    const income = periodTransactions.filter(t => t.tipo === 'abono').reduce((acc, t) => acc + t.monto, 0);
-    const expenses = periodTransactions.filter(t => t.tipo === 'cargo').reduce((acc, t) => acc + t.monto, 0);
-    return income - expenses;
-  }, [periodTransactions]);
+  if (!isAuthenticated) {
+    return <Login onLogin={() => setIsAuthenticated(true)} />;
+  }
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 font-sans">
@@ -358,6 +371,7 @@ export default function App() {
                 periodTransactions={periodTransactions}
                 classifications={classifications}
                 activePeriod={activePeriod}
+                categories={categories}
               />
             )}
 

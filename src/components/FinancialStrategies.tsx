@@ -59,9 +59,9 @@ export const FinancialStrategies: React.FC<FinancialStrategiesProps> = ({
 }) => {
     const [tab, setTab] = useState<StrategyTab>('50-30-20');
 
-    // Helpers to get cats
-    const getCatsByBucket = (bucket: Bucket503020) => categories.filter(c => c.bucket === bucket).map(c => c.name);
-    const getCatsByJar = (jar: Jar6) => categories.filter(c => c.jar === jar).map(c => c.name);
+    // Helpers to get cats by matching correctly with types Bucket503020 and Jar6
+    const getCatsByBucket = (bucket: Bucket503020) => categories.filter((c: CategoryConfig) => c.bucket === bucket).map(c => c.name);
+    const getCatsByJar = (jar: Jar6) => categories.filter((c: CategoryConfig) => c.jar === jar).map(c => c.name);
 
     // Income = salary (abonos >= 700k)
     const income = periodTransactions
