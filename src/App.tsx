@@ -8,7 +8,8 @@ import {
   ClassificationResult,
   SavingsRecommendation,
   CategoryConfig,
-  ClassificationHistory
+  ClassificationHistory,
+  getAISettings
 } from './services/geminiService';
 import { getSalaryPeriods, getTransactionsForPeriod } from './services/periodService';
 import { Sidebar } from './components/Sidebar';
@@ -17,6 +18,7 @@ import { TransactionsModule } from './components/TransactionsModule';
 import { SavingsGuard } from './components/SavingsGuard';
 import { PeriodSelector } from './components/PeriodSelector';
 import { CategoryManager } from './components/CategoryManager';
+import { AIChat } from './components/AIChat';
 import { Login } from './components/Login';
 import { supabase, DatabaseTransaction } from './services/supabaseClient';
 import { getFintoc } from '@fintoc/fintoc-js';
@@ -42,11 +44,9 @@ function loadCategories(): CategoryConfig[] {
     if (saved) {
       const parsed = JSON.parse(saved);
       if (Array.isArray(parsed) && parsed.length > 0) {
-        // old array of strings migration
         if (typeof parsed[0] === 'string') {
           return parsed.map((name: string) => ({ name, bucket: 'Ignorar', jar: 'Ignorar' } as CategoryConfig));
         }
-        // array of objects (CategoryConfig) validation
         if (typeof parsed[0] === 'object' && parsed[0] !== null && 'name' in parsed[0]) {
           return parsed as CategoryConfig[];
         }
@@ -85,6 +85,7 @@ export default function App() {
     "Gastos Chicos/Almacén": 50000,
     "Entretenimiento": 80000
   });
+  const [isChatOpen, setIsChatOpen] = useState(false);
 
   React.useEffect(() => {
     loadTransactions();
@@ -98,7 +99,7 @@ export default function App() {
       .order('fecha', { ascending: false });
 
     if (error) {
-      console.error('Error loading txs:', error.message, error.details, error.hint);
+      console.error('Error loading txs:', error.message);
       return;
     }
 
@@ -126,52 +127,40 @@ export default function App() {
     }
   };
 
-  // ─── Compute salary-based periods ──────────────────────────────────
-  const salaryPeriods = useMemo(
-    () => getSalaryPeriods(transactions),
-    [transactions]
-  );
+  const salaryPeriods = useMemo(() => getSalaryPeriods(transactions), [transactions]);
 
-  // Auto-select the most recent period whenever periods change
   React.useEffect(() => {
     if (salaryPeriods.length > 0) {
-      setSelectedPeriodIndex(salaryPeriods.length - 1);
+      setSelectedPeriodIndex(prev => Math.min(prev, salaryPeriods.length - 1));
     }
   }, [salaryPeriods.length]);
 
   const activePeriod = salaryPeriods[selectedPeriodIndex] ?? null;
 
-  // Transactions scoped to the selected period
   const periodTransactions = useMemo(
     () => activePeriod ? getTransactionsForPeriod(transactions, activePeriod) : transactions,
     [transactions, activePeriod]
   );
 
-  // ─── Fintoc ────────────────────────────────────────────────────────
   const syncFintoc = async () => {
     setLoadingFintoc(true);
     try {
       const intentRes = await fetch('/api/fintoc/create-link-intent', { method: 'POST' });
-      if (!intentRes.ok) {
-        const errData = await intentRes.json();
-        throw new Error(errData.error || 'No se pudo crear el link intent');
-      }
+      if (!intentRes.ok) throw new Error('No se pudo crear el link intent');
       const { widget_token } = await intentRes.json();
-
       const fintoc = await getFintoc();
       if (!fintoc) throw new Error('Failed to load Fintoc SDK');
 
-      const publicKey = import.meta.env.VITE_FINTOC_PUBLIC_KEY || '';
       const widget = fintoc.create({
-        publicKey,
+        publicKey: import.meta.env.VITE_FINTOC_PUBLIC_KEY || '',
         widgetToken: widget_token,
         holderType: 'individual',
         product: 'movements',
         country: 'cl',
         onSuccess: async () => {
-          alert('¡Conexión bancaria exitosa! Sincronizando transacciones...');
+          alert('¡Conexión bancaria exitosa!');
           setLoadingFintoc(false);
-          setTimeout(async () => { await loadTransactions(); }, 4000);
+          loadTransactions();
         },
         onExit: () => setLoadingFintoc(false)
       });
@@ -183,7 +172,6 @@ export default function App() {
     }
   };
 
-  // ─── Classification ────────────────────────────────────────────────
   const handleCategoriesChange = (newCats: CategoryConfig[]) => {
     setCategories(newCats);
     saveCategories(newCats);
@@ -194,17 +182,17 @@ export default function App() {
     if (!transaction) return;
     setClassifications(prev => ({ ...prev, [id]: 'loading' }));
 
-    // Build history of officially reviewed transactions to teach the AI
     const history: ClassificationHistory[] = transactions
       .filter(t => t.id !== id && classifications[t.id] && (classifications[t.id] as ClassificationResult).estado_revision === 'oficial')
       .map(t => ({
         descripcion: t.descripcion,
         categoria: (classifications[t.id] as ClassificationResult).categoria_asignada
       }))
-      .slice(0, 50); // limit to last 50 for token constraints
+      .slice(0, 50);
 
     try {
-      const result = await classifyTransaction(transaction, categories, history);
+      const instructions = getAISettings().custom_instructions;
+      const result = await classifyTransaction(transaction, categories, history, instructions);
       await supabase.from('transacciones').update({
         categoria_asignada: result.categoria_asignada,
         estado_revision: result.estado_revision,
@@ -232,9 +220,7 @@ export default function App() {
   };
 
   const handleClassifyAll = async () => {
-    // Classify all unclassified transactions in the current period
-    const target = (activePeriod ? periodTransactions : transactions)
-      .filter(t => !classifications[t.id] || classifications[t.id] === 'error');
+    const target = periodTransactions.filter(t => !classifications[t.id] || classifications[t.id] === 'error');
     for (const t of target) await handleClassify(t.id);
   };
 
@@ -250,11 +236,8 @@ export default function App() {
     }
   };
 
-  // ─── Derived data (all scoped to selected period) ──────────────────
   const filteredTransactions = useMemo(() =>
-    periodTransactions.filter(t =>
-      t.descripcion.toLowerCase().includes(searchTerm.toLowerCase())
-    ),
+    periodTransactions.filter(t => t.descripcion.toLowerCase().includes(searchTerm.toLowerCase())),
     [periodTransactions, searchTerm]
   );
 
@@ -271,7 +254,7 @@ export default function App() {
     return Object.entries(data).map(([name, value]) => ({ name, value }));
   }, [periodTransactions, classifications]);
 
-  const totalSavings = React.useMemo(() => {
+  const totalSavings = useMemo(() => {
     const income = periodTransactions.filter(t => t.tipo === 'abono').reduce((acc, t) => acc + t.monto, 0);
     const expenses = periodTransactions.filter(t => t.tipo === 'cargo').reduce((acc, t) => acc + t.monto, 0);
     return income - expenses;
@@ -297,58 +280,46 @@ export default function App() {
     <div className="min-h-screen bg-slate-50 text-slate-900 font-sans">
       <Sidebar activeView={view} onViewChange={setView} />
 
-      <main className="lg:ml-64 min-h-screen">
-        <header className="h-16 bg-white/80 backdrop-blur-md border-b border-slate-200 sticky top-0 z-10 px-6 flex items-center justify-between">
+      <main className="lg:ml-64 min-h-screen flex flex-col">
+        <header className="h-16 bg-white/80 backdrop-blur-md border-b border-slate-200 sticky top-0 z-40 px-6 flex items-center justify-between">
           <h2 className="text-lg font-bold capitalize">
             {view === 'dashboard' ? 'Centro de Crecimiento' : view === 'budgets' ? 'Protección de Ahorros' : 'Transacciones'}
           </h2>
           <div className="flex items-center gap-3">
             <button
+              onClick={() => setIsChatOpen(true)}
+              className="p-2 hover:bg-indigo-50 text-indigo-600 rounded-full transition-colors relative"
+              title="Nexus AI Chat"
+            >
+              <Sparkles className="w-5 h-5" />
+              <span className="absolute top-0 right-0 w-2 h-2 bg-indigo-500 rounded-full border-2 border-white"></span>
+            </button>
+            <button
+              onClick={() => setShowCategoryManager(true)}
+              className="p-2 hover:bg-slate-100 text-slate-600 rounded-full transition-colors"
+              title="Configurar Categorías"
+            >
+              <Settings2 className="w-5 h-5" />
+            </button>
+            <button
               onClick={syncFintoc}
               disabled={loadingFintoc}
               className="hidden sm:flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white text-sm font-semibold rounded-full hover:bg-emerald-700 transition-all shadow-md shadow-emerald-100 disabled:opacity-60"
             >
-              {loadingFintoc ? <RefreshCw className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+              <RefreshCw className={`w-4 h-4 ${loadingFintoc ? 'animate-spin' : ''}`} />
               {loadingFintoc ? 'Conectando...' : 'Conectar Banco'}
             </button>
             <button
               onClick={handleClassifyAll}
               className="hidden sm:flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white text-sm font-semibold rounded-full hover:bg-indigo-700 transition-all shadow-md shadow-indigo-100"
             >
-              <RefreshCw className="w-4 h-4" />
-              Clasificar
-            </button>
-            <button
-              onClick={() => setShowCategoryManager(true)}
-              className="hidden sm:flex items-center gap-2 px-3 py-2 bg-slate-100 text-slate-600 text-sm font-semibold rounded-full hover:bg-slate-200 transition-all"
-              title="Gestionar categorías"
-            >
-              <Settings2 className="w-4 h-4" />
-            </button>
-            <button
-              onClick={fetchRecommendations}
-              disabled={loadingRecs}
-              className="flex items-center gap-2 px-4 py-2 bg-amber-500 text-white text-sm font-semibold rounded-full hover:bg-amber-600 transition-all shadow-md shadow-amber-100"
-            >
-              {loadingRecs ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
-              {recommendations.length > 0 ? 'Estrategias' : 'IA Estrategias'}
+              <Sparkles className="w-4 h-4" />
+              Clasificar Todo
             </button>
           </div>
         </header>
 
-        {/* Category Manager Modal */}
-        <AnimatePresence>
-          {showCategoryManager && (
-            <CategoryManager
-              categories={categories}
-              onCategoriesChange={handleCategoriesChange}
-              onClose={() => setShowCategoryManager(false)}
-            />
-          )}
-        </AnimatePresence>
-
-        <div className="p-6 lg:p-10 max-w-6xl mx-auto">
-          {/* Period selector — shown in all views */}
+        <div className="flex-1 p-6 lg:p-10 max-w-6xl mx-auto w-full">
           {salaryPeriods.length > 0 && (
             <PeriodSelector
               periods={salaryPeriods}
@@ -402,6 +373,30 @@ export default function App() {
           </AnimatePresence>
         </div>
       </main>
+
+      <AIChat
+        isOpen={isChatOpen}
+        onClose={() => setIsChatOpen(false)}
+        transactions={periodTransactions}
+        categories={categories}
+        history={transactions
+          .filter(t => classifications[t.id] && (classifications[t.id] as ClassificationResult).estado_revision === 'oficial')
+          .map(t => ({
+            descripcion: t.descripcion,
+            categoria: (classifications[t.id] as ClassificationResult).categoria_asignada
+          }))
+        }
+      />
+
+      <AnimatePresence>
+        {showCategoryManager && (
+          <CategoryManager
+            categories={categories}
+            onCategoriesChange={handleCategoriesChange}
+            onClose={() => setShowCategoryManager(false)}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }

@@ -1,27 +1,14 @@
 import { GoogleGenAI, Type } from "@google/genai";
 
 const SYSTEM_INSTRUCTIONS = `
-Eres un asistente de clasificación financiera automatizada. Recibirás los datos de una transacción bancaria en formato JSON. Tu objetivo es analizar la descripción, el monto y el tipo de movimiento para asignar una "categoría" y un "estado" basándote ESTRICTAMENTE en las siguientes reglas:
+Eres un asistente de clasificación financiera automatizada. Recibirás los datos de una transacción bancaria en formato JSON. Tu objetivo es analizar la descripción, el monto y el tipo de movimiento para asignar una "categoría" y un "estado" basándote ESTRICTAMENTE en las reglas de categorización.
 
-REGLAS DE INGRESOS (Montos a favor):
-1. Si la descripción menciona "Sueldo", "Remuneración" o "Pago de nómina", categorizar como "Sueldo".
-2. Si la descripción menciona "Arriendo" o "Alquiler", categorizar como "Arriendo".
-3. Si el remitente o la descripción menciona "Roberto Mella", categorizar como "Ingreso Roberto Mella".
-
-REGLAS DE EGRESOS (Cargos o pagos):
-4. Si la descripción menciona "Servipag", "Dividendo", "Luz", "Agua", "Enel", "Aguas Andinas" o "Isapre", categorizar como "Cuentas Casa".
-5. Si la descripción menciona "Lider", "Walmart" o hipermercados, categorizar como "Supermercado (Comida)".
-6. Si la descripción sugiere un comercio local, almacén de barrio, minimarket o kiosco, categorizar como "Gastos Chicos/Almacén".
-
-REGLA DE EXCEPCIÓN Y CONTROL:
-7. Si es una transferencia a un tercero o un comercio que NO calza con un 100% de seguridad en las reglas anteriores, debes categorizar OBLIGATORIAMENTE como "Por Definir".
-
-REGLAS DE ESTADO DE REVISIÓN:
-- Si la transacción calzó perfectamente en las reglas 1 a la 6, asigna el estado "oficial" (automatización completa).
-- Si la transacción cayó en la regla 7 ("Por Definir"), asigna el estado "pendiente" (requiere revisión manual del usuario).
-
-Devuelve tu respuesta ÚNICAMENTE en un formato JSON válido.
+También debes considerar las INSTRUCCIONES PERSONALIZADAS del usuario que se te proporcionarán.
 `;
+
+export interface AISettings {
+  custom_instructions: string;
+}
 
 export interface Transaction {
   id: string;
@@ -54,7 +41,8 @@ export interface ClassificationHistory {
 export async function classifyTransaction(
   transaction: Transaction,
   availableCategories: CategoryConfig[],
-  history: ClassificationHistory[]
+  history: ClassificationHistory[],
+  customInstructions?: string
 ): Promise<ClassificationResult> {
   const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
   if (!apiKey) {
@@ -80,6 +68,9 @@ Debes escoger EXACTAMENTE UNA de estas categorías, no inventes nuevas:
 [${categoryNames}]
 
 ${historyText}
+
+INSTRUCCIONES PERSONALIZADAS DEL USUARIO:
+${customInstructions || 'Sin instrucciones adicionales.'}
 
 Transacción a analizar:
 ${JSON.stringify({
@@ -164,3 +155,74 @@ export async function getAIRecommendations(transactions: Transaction[]): Promise
 
   return JSON.parse(text) as SavingsRecommendation[];
 }
+
+export interface ChatMessage {
+  role: 'user' | 'model';
+  parts: { text: string }[];
+}
+
+const AI_SETTINGS_KEY = 'nexus_ai_instructions';
+
+export function getAISettings(): AISettings {
+  const saved = localStorage.getItem(AI_SETTINGS_KEY);
+  if (saved) {
+    try {
+      return JSON.parse(saved);
+    } catch {
+      // fallback
+    }
+  }
+  return {
+    custom_instructions: "Eres Nexus AI, un experto en finanzas personales. Ayuda al usuario a categorizar y optimizar sus gastos."
+  };
+}
+
+export function updateAISettings(settings: AISettings) {
+  localStorage.setItem(AI_SETTINGS_KEY, JSON.stringify(settings));
+}
+
+export async function chatWithAI(
+  prompt: string,
+  context: {
+    transactions: Transaction[];
+    categories: CategoryConfig[];
+    history: ClassificationHistory[];
+    customInstructions: string;
+  },
+  chatHistory: ChatMessage[] = []
+): Promise<string> {
+  const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+  if (!apiKey) throw new Error("GEMINI_API_KEY is not set");
+
+  const ai = new GoogleGenAI({ apiKey });
+
+  const systemPrompt = `
+    Eres Nexus AI, un asistente financiero experto.
+    
+    CONTEXTO ACTUAL:
+    - Categorías configuradas: ${context.categories.map(c => c.name).join(', ')}
+    - Instrucciones actuales de aprendizaje: ${context.customInstructions || 'Ninguna'}
+    - El usuario tiene ${context.transactions.length} transacciones en el periodo actual.
+    
+    Capacidades:
+    1. Sugiere reclasificaciones si detectas errores.
+    2. Ayuda al usuario a definir nuevas reglas de categorización.
+    3. Analiza gastos para optimizar el ahorro.
+    
+    REGLA: Si el usuario te da una regla nueva (Ej: "Pon DIDI en Transporte"), confírmala y explícitamente dile que ahora la has aprendido.
+  `;
+
+  const previousMessages = chatHistory.map(m =>
+    `${m.role === 'user' ? 'Usuario' : 'Asistente'}: ${m.parts[0].text}`
+  ).join('\n');
+
+  const fullPrompt = `${systemPrompt}\n\n${previousMessages}\nUsuario: ${prompt}\nAsistente:`;
+
+  const response = await ai.models.generateContent({
+    model: "gemini-1.5-flash",
+    contents: [{ parts: [{ text: fullPrompt }] }]
+  });
+
+  return response.text;
+}
+

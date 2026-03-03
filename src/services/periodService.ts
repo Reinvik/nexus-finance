@@ -33,9 +33,9 @@ export function getSalaryPeriods(transactions: Transaction[]): SalaryPeriod[] {
         const salaryDate = new Date(salaries[i].fecha + 'T12:00:00');
 
         // The period label is the NEXT month (salary on Nov 28 → "Diciembre 2025")
-        const nextMonth = new Date(salaryDate);
-        nextMonth.setMonth(nextMonth.getMonth() + 1);
-        const label = `${MONTH_NAMES[nextMonth.getMonth()]} ${nextMonth.getFullYear()}`;
+        // Use a safe date (1st of month) before adding month to avoid roll-over bugs (Jan 31 -> March)
+        const labelDate = new Date(salaryDate.getFullYear(), salaryDate.getMonth() + 1, 1);
+        const label = `${MONTH_NAMES[labelDate.getMonth()]} ${labelDate.getFullYear()}`;
 
         // Period ends the day before the next salary (or today if it's the last period)
         let endDate: Date;
