@@ -16,8 +16,31 @@
             "destination": "/api/fintoc"
         },
         {
+            "source": "/api/debug",
+            "destination": "/api/debug"
+        },
+        {
             "source": "/(.*)",
             "destination": "/index.html"
+        }
+    ],
+    "headers": [
+        {
+            "source": "/api/(.*)",
+            "headers": [
+                {
+                    "key": "Access-Control-Allow-Origin",
+                    "value": "https://finance.nexusnetwork.cl"
+                },
+                {
+                    "key": "Access-Control-Allow-Methods",
+                    "value": "GET,POST,OPTIONS"
+                },
+                {
+                    "key": "Access-Control-Allow-Headers",
+                    "value": "Content-Type"
+                }
+            ]
         }
     ]
 }
