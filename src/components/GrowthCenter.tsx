@@ -2,7 +2,9 @@ import React from 'react';
 import { motion } from 'motion/react';
 import { PieChart as PieChartIcon, Target, Sparkles } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
-import { SavingsRecommendation } from '../services/geminiService';
+import { SavingsRecommendation, Transaction, ClassificationResult } from '../services/geminiService';
+import { FinancialStrategies } from './FinancialStrategies';
+import { SalaryPeriod } from '../services/periodService';
 
 interface ChartDataItem {
   name: string;
@@ -23,6 +25,9 @@ interface GrowthCenterProps {
   recommendations: SavingsRecommendation[];
   colors: string[];
   periodLabel: string;
+  periodTransactions: Transaction[];
+  classifications: Record<string, ClassificationResult | 'loading' | 'error'>;
+  activePeriod: SalaryPeriod | null;
 }
 
 export const GrowthCenter: React.FC<GrowthCenterProps> = ({
@@ -32,7 +37,10 @@ export const GrowthCenter: React.FC<GrowthCenterProps> = ({
   budgetData,
   recommendations,
   colors,
-  periodLabel
+  periodLabel,
+  periodTransactions,
+  classifications,
+  activePeriod
 }) => {
   return (
     <motion.div
@@ -113,6 +121,14 @@ export const GrowthCenter: React.FC<GrowthCenterProps> = ({
             ))}
           </div>
         </div>
+      </div>
+
+      <div className="mb-10">
+        <FinancialStrategies
+          periodTransactions={periodTransactions}
+          classifications={classifications}
+          activePeriod={activePeriod}
+        />
       </div>
 
       {/* AI Growth Strategies */}

@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { AnimatePresence } from 'motion/react';
-import { RefreshCw, Sparkles } from 'lucide-react';
+import { RefreshCw, Sparkles, Settings2 } from 'lucide-react';
 import {
   classifyTransaction,
   getAIRecommendations,
@@ -14,18 +14,36 @@ import { GrowthCenter } from './components/GrowthCenter';
 import { TransactionsModule } from './components/TransactionsModule';
 import { SavingsGuard } from './components/SavingsGuard';
 import { PeriodSelector } from './components/PeriodSelector';
+import { CategoryManager } from './components/CategoryManager';
 import { supabase, DatabaseTransaction } from './services/supabaseClient';
 import { getFintoc } from '@fintoc/fintoc-js';
 
-const CATEGORIES = [
+const DEFAULT_CATEGORIES = [
   "Sueldo", "Arriendo", "Ingreso Roberto Mella", "Cuentas Casa",
-  "Supermercado (Comida)", "Gastos Chicos/Almacén", "Por Definir", "Entretenimiento"
+  "Supermercado (Comida)", "Gastos Chicos/Almacén", "Por Definir",
+  "Entretenimiento", "Transporte", "Ahorro Automático"
 ];
+
+const STORAGE_KEY = 'nexus_categories';
+
+function loadCategories(): string[] {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved) return JSON.parse(saved) as string[];
+  } catch { /* ignore */ }
+  return DEFAULT_CATEGORIES;
+}
+
+function saveCategories(cats: string[]) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(cats));
+}
 
 const COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
 const USER_ID = '00000000-0000-0000-0000-000000000000';
 
 export default function App() {
+  const [categories, setCategories] = useState<string[]>(loadCategories);
+  const [showCategoryManager, setShowCategoryManager] = useState(false);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [classifications, setClassifications] = useState<Record<string, ClassificationResult | 'loading' | 'error'>>({});
   const [searchTerm, setSearchTerm] = useState('');
@@ -141,6 +159,11 @@ export default function App() {
   };
 
   // ─── Classification ────────────────────────────────────────────────
+  const handleCategoriesChange = (newCats: string[]) => {
+    setCategories(newCats);
+    saveCategories(newCats);
+  };
+
   const handleClassify = async (id: string) => {
     const transaction = transactions.find(t => t.id === id);
     if (!transaction) return;
@@ -257,6 +280,13 @@ export default function App() {
               Clasificar
             </button>
             <button
+              onClick={() => setShowCategoryManager(true)}
+              className="hidden sm:flex items-center gap-2 px-3 py-2 bg-slate-100 text-slate-600 text-sm font-semibold rounded-full hover:bg-slate-200 transition-all"
+              title="Gestionar categorías"
+            >
+              <Settings2 className="w-4 h-4" />
+            </button>
+            <button
               onClick={fetchRecommendations}
               disabled={loadingRecs}
               className="flex items-center gap-2 px-4 py-2 bg-amber-500 text-white text-sm font-semibold rounded-full hover:bg-amber-600 transition-all shadow-md shadow-amber-100"
@@ -266,6 +296,17 @@ export default function App() {
             </button>
           </div>
         </header>
+
+        {/* Category Manager Modal */}
+        <AnimatePresence>
+          {showCategoryManager && (
+            <CategoryManager
+              categories={categories}
+              onCategoriesChange={handleCategoriesChange}
+              onClose={() => setShowCategoryManager(false)}
+            />
+          )}
+        </AnimatePresence>
 
         <div className="p-6 lg:p-10 max-w-6xl mx-auto">
           {/* Period selector — shown in all views */}
@@ -288,6 +329,9 @@ export default function App() {
                 recommendations={recommendations}
                 colors={COLORS}
                 periodLabel={activePeriod?.label ?? 'Todos los periodos'}
+                periodTransactions={periodTransactions}
+                classifications={classifications}
+                activePeriod={activePeriod}
               />
             )}
 
@@ -302,7 +346,7 @@ export default function App() {
                 onManualClassify={handleManualClassify}
                 editingId={editingId}
                 setEditingId={setEditingId}
-                categories={CATEGORIES}
+                categories={categories}
               />
             )}
 
