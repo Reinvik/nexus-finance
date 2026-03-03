@@ -28,6 +28,7 @@ interface GrowthCenterProps {
   periodTransactions: Transaction[];
   classifications: Record<string, ClassificationResult | 'loading' | 'error'>;
   activePeriod: SalaryPeriod | null;
+  categories: CategoryConfig[];
 }
 
 export const GrowthCenter: React.FC<GrowthCenterProps> = ({
@@ -40,7 +41,8 @@ export const GrowthCenter: React.FC<GrowthCenterProps> = ({
   periodLabel,
   periodTransactions,
   classifications,
-  activePeriod
+  activePeriod,
+  categories
 }) => {
   return (
     <motion.div
@@ -128,6 +130,7 @@ export const GrowthCenter: React.FC<GrowthCenterProps> = ({
           periodTransactions={periodTransactions}
           classifications={classifications}
           activePeriod={activePeriod}
+          categories={categories}
         />
       </div>
 
