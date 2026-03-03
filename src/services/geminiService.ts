@@ -219,8 +219,8 @@ export async function chatWithAI(
   const fullPrompt = `${systemPrompt}\n\n${previousMessages}\nUsuario: ${prompt}\nAsistente:`;
 
   const response = await ai.models.generateContent({
-    model: "gemini-1.5-flash",
-    contents: [{ parts: [{ text: fullPrompt }] }]
+    model: "gemini-2.0-flash",
+    contents: [{ text: fullPrompt }]
   });
 
   return response.text;
