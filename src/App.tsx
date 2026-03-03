@@ -8,10 +8,12 @@ import {
   ClassificationResult,
   SavingsRecommendation
 } from './services/geminiService';
+import { getSalaryPeriods, getTransactionsForPeriod } from './services/periodService';
 import { Sidebar } from './components/Sidebar';
 import { GrowthCenter } from './components/GrowthCenter';
 import { TransactionsModule } from './components/TransactionsModule';
 import { SavingsGuard } from './components/SavingsGuard';
+import { PeriodSelector } from './components/PeriodSelector';
 import { supabase, DatabaseTransaction } from './services/supabaseClient';
 import { getFintoc } from '@fintoc/fintoc-js';
 
@@ -21,8 +23,6 @@ const CATEGORIES = [
 ];
 
 const COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
-
-// Usuario demo hasta implementar Auth real
 const USER_ID = '00000000-0000-0000-0000-000000000000';
 
 export default function App() {
@@ -34,6 +34,7 @@ export default function App() {
   const [loadingRecs, setLoadingRecs] = useState(false);
   const [loadingFintoc, setLoadingFintoc] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [selectedPeriodIndex, setSelectedPeriodIndex] = useState<number>(0);
   const [savingsGoal, setSavingsGoal] = useState(1000000);
   const [budgets, setBudgets] = useState<Record<string, number>>({
     "Cuentas Casa": 100000,
@@ -82,30 +83,42 @@ export default function App() {
     }
   };
 
-  // ─────────────────────────────────────────────────────────────────
-  // FLUJO CORRECTO FINTOC MOVEMENTS:
-  // 1. Backend crea link_intent → retorna widget_token
-  // 2. Frontend abre widget con widget_token
-  // 3. Fintoc envía link_token al webhook en finance.nexusnetwork.cl
-  // ─────────────────────────────────────────────────────────────────
+  // ─── Compute salary-based periods ──────────────────────────────────
+  const salaryPeriods = useMemo(
+    () => getSalaryPeriods(transactions),
+    [transactions]
+  );
+
+  // Auto-select the most recent period whenever periods change
+  React.useEffect(() => {
+    if (salaryPeriods.length > 0) {
+      setSelectedPeriodIndex(salaryPeriods.length - 1);
+    }
+  }, [salaryPeriods.length]);
+
+  const activePeriod = salaryPeriods[selectedPeriodIndex] ?? null;
+
+  // Transactions scoped to the selected period
+  const periodTransactions = useMemo(
+    () => activePeriod ? getTransactionsForPeriod(transactions, activePeriod) : transactions,
+    [transactions, activePeriod]
+  );
+
+  // ─── Fintoc ────────────────────────────────────────────────────────
   const syncFintoc = async () => {
     setLoadingFintoc(true);
     try {
-      // Paso 1: Pedir widget_token al backend
       const intentRes = await fetch('/api/fintoc/create-link-intent', { method: 'POST' });
       if (!intentRes.ok) {
         const errData = await intentRes.json();
         throw new Error(errData.error || 'No se pudo crear el link intent');
       }
       const { widget_token } = await intentRes.json();
-      console.log('[Fintoc] widget_token recibido del backend');
 
-      // Paso 2: Inicializar SDK con widget_token
       const fintoc = await getFintoc();
       if (!fintoc) throw new Error('Failed to load Fintoc SDK');
 
       const publicKey = import.meta.env.VITE_FINTOC_PUBLIC_KEY || '';
-
       const widget = fintoc.create({
         publicKey,
         widgetToken: widget_token,
@@ -113,17 +126,12 @@ export default function App() {
         product: 'movements',
         country: 'cl',
         onSuccess: async () => {
-          // El link_token llega por webhook automáticamente al servidor.
-          // Esperamos 4s para que el webhook procese y recargamos transacciones.
           alert('¡Conexión bancaria exitosa! Sincronizando transacciones...');
           setLoadingFintoc(false);
-          setTimeout(async () => {
-            await loadTransactions();
-          }, 4000);
+          setTimeout(async () => { await loadTransactions(); }, 4000);
         },
         onExit: () => setLoadingFintoc(false)
       });
-
       widget.open();
     } catch (error: any) {
       console.error('[Fintoc] Error:', error);
@@ -132,6 +140,7 @@ export default function App() {
     }
   };
 
+  // ─── Classification ────────────────────────────────────────────────
   const handleClassify = async (id: string) => {
     const transaction = transactions.find(t => t.id === id);
     if (!transaction) return;
@@ -144,7 +153,7 @@ export default function App() {
         razonamiento_breve: result.razonamiento_breve
       }).eq('id', id);
       setClassifications(prev => ({ ...prev, [id]: result }));
-    } catch (error) {
+    } catch {
       setClassifications(prev => ({ ...prev, [id]: 'error' }));
     }
   };
@@ -165,16 +174,16 @@ export default function App() {
   };
 
   const handleClassifyAll = async () => {
-    const unclassified = transactions.filter(t => !classifications[t.id] || classifications[t.id] === 'error');
-    for (const t of unclassified) {
-      await handleClassify(t.id);
-    }
+    // Classify all unclassified transactions in the current period
+    const target = (activePeriod ? periodTransactions : transactions)
+      .filter(t => !classifications[t.id] || classifications[t.id] === 'error');
+    for (const t of target) await handleClassify(t.id);
   };
 
   const fetchRecommendations = async () => {
     setLoadingRecs(true);
     try {
-      const recs = await getAIRecommendations(transactions);
+      const recs = await getAIRecommendations(periodTransactions);
       setRecommendations(recs);
     } catch (error) {
       console.error(error);
@@ -183,15 +192,17 @@ export default function App() {
     }
   };
 
-  const filteredTransactions = useMemo(() => {
-    return transactions.filter(t =>
+  // ─── Derived data (all scoped to selected period) ──────────────────
+  const filteredTransactions = useMemo(() =>
+    periodTransactions.filter(t =>
       t.descripcion.toLowerCase().includes(searchTerm.toLowerCase())
-    );
-  }, [transactions, searchTerm]);
+    ),
+    [periodTransactions, searchTerm]
+  );
 
   const chartData = useMemo(() => {
     const data: Record<string, number> = {};
-    transactions.forEach(t => {
+    periodTransactions.forEach(t => {
       if (t.tipo === 'cargo') {
         const cat = typeof classifications[t.id] === 'object'
           ? (classifications[t.id] as ClassificationResult).categoria_asignada
@@ -200,22 +211,25 @@ export default function App() {
       }
     });
     return Object.entries(data).map(([name, value]) => ({ name, value }));
-  }, [transactions, classifications]);
+  }, [periodTransactions, classifications]);
 
-  const budgetData = useMemo(() => {
-    return Object.entries(budgets).map(([name, limit]) => {
-      const spent = transactions
-        .filter(t => t.tipo === 'cargo' && typeof classifications[t.id] === 'object' && (classifications[t.id] as ClassificationResult).categoria_asignada === name)
+  const budgetData = useMemo(() =>
+    Object.entries(budgets).map(([name, limit]) => {
+      const spent = periodTransactions
+        .filter(t => t.tipo === 'cargo' &&
+          typeof classifications[t.id] === 'object' &&
+          (classifications[t.id] as ClassificationResult).categoria_asignada === name)
         .reduce((acc, t) => acc + t.monto, 0);
       return { name, spent, limit };
-    });
-  }, [transactions, classifications, budgets]);
+    }),
+    [periodTransactions, classifications, budgets]
+  );
 
   const totalSavings = useMemo(() => {
-    const income = transactions.filter(t => t.tipo === 'abono').reduce((acc, t) => acc + t.monto, 0);
-    const expenses = transactions.filter(t => t.tipo === 'cargo').reduce((acc, t) => acc + t.monto, 0);
+    const income = periodTransactions.filter(t => t.tipo === 'abono').reduce((acc, t) => acc + t.monto, 0);
+    const expenses = periodTransactions.filter(t => t.tipo === 'cargo').reduce((acc, t) => acc + t.monto, 0);
     return income - expenses;
-  }, [transactions]);
+  }, [periodTransactions]);
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 font-sans">
@@ -233,14 +247,14 @@ export default function App() {
               className="hidden sm:flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white text-sm font-semibold rounded-full hover:bg-emerald-700 transition-all shadow-md shadow-emerald-100 disabled:opacity-60"
             >
               {loadingFintoc ? <RefreshCw className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-              {loadingFintoc ? 'Conectando...' : 'Conectar Banco (Fintoc)'}
+              {loadingFintoc ? 'Conectando...' : 'Conectar Banco'}
             </button>
             <button
               onClick={handleClassifyAll}
               className="hidden sm:flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white text-sm font-semibold rounded-full hover:bg-indigo-700 transition-all shadow-md shadow-indigo-100"
             >
               <RefreshCw className="w-4 h-4" />
-              Clasificar Todo
+              Clasificar
             </button>
             <button
               onClick={fetchRecommendations}
@@ -248,12 +262,21 @@ export default function App() {
               className="flex items-center gap-2 px-4 py-2 bg-amber-500 text-white text-sm font-semibold rounded-full hover:bg-amber-600 transition-all shadow-md shadow-amber-100"
             >
               {loadingRecs ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
-              {recommendations.length > 0 ? 'Refrescar Estrategias' : 'Estrategias de Ahorro'}
+              {recommendations.length > 0 ? 'Estrategias' : 'IA Estrategias'}
             </button>
           </div>
         </header>
 
         <div className="p-6 lg:p-10 max-w-6xl mx-auto">
+          {/* Period selector — shown in all views */}
+          {salaryPeriods.length > 0 && (
+            <PeriodSelector
+              periods={salaryPeriods}
+              selectedIndex={selectedPeriodIndex}
+              onSelect={setSelectedPeriodIndex}
+            />
+          )}
+
           <AnimatePresence mode="wait">
             {view === 'dashboard' && (
               <GrowthCenter
@@ -264,6 +287,7 @@ export default function App() {
                 budgetData={budgetData}
                 recommendations={recommendations}
                 colors={COLORS}
+                periodLabel={activePeriod?.label ?? 'Todos los periodos'}
               />
             )}
 

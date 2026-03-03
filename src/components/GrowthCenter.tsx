@@ -22,38 +22,40 @@ interface GrowthCenterProps {
   budgetData: BudgetItem[];
   recommendations: SavingsRecommendation[];
   colors: string[];
+  periodLabel: string;
 }
 
-export const GrowthCenter: React.FC<GrowthCenterProps> = ({ 
-  totalSavings, 
-  savingsGoal, 
-  chartData, 
-  budgetData, 
-  recommendations, 
-  colors 
+export const GrowthCenter: React.FC<GrowthCenterProps> = ({
+  totalSavings,
+  savingsGoal,
+  chartData,
+  budgetData,
+  recommendations,
+  colors,
+  periodLabel
 }) => {
   return (
-    <motion.div 
-      initial={{ opacity: 0, y: 20 }} 
-      animate={{ opacity: 1, y: 0 }} 
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -20 }}
     >
       {/* Savings Growth Header */}
       <div className="mb-10 bg-indigo-600 rounded-[2rem] p-8 text-white shadow-xl shadow-indigo-100 relative overflow-hidden">
         <div className="relative z-10">
-          <h3 className="text-indigo-100 font-semibold mb-2 uppercase tracking-wider text-xs">Crecimiento de Ahorros Actual</h3>
-          <div className="flex items-baseline gap-3 mb-6">
+          <h3 className="text-indigo-100 font-semibold mb-2 uppercase tracking-wider text-xs">Crecimiento de Ahorros</h3>
+          <div className="flex items-baseline gap-3 mb-1">
             <span className="text-5xl font-bold">${totalSavings.toLocaleString('es-CL')} CLP</span>
-            <span className="text-indigo-200 text-sm font-medium">Ahorrado este periodo</span>
           </div>
-          
+          <div className="text-indigo-200 text-sm font-medium mb-6">{periodLabel}</div>
+
           <div className="max-w-md">
             <div className="flex justify-between text-sm mb-2 font-medium">
               <span>Meta: ${savingsGoal.toLocaleString('es-CL')} CLP</span>
               <span>{Math.round((totalSavings / savingsGoal) * 100)}% Logrado</span>
             </div>
             <div className="w-full bg-white/20 rounded-full h-3 overflow-hidden backdrop-blur-sm">
-              <motion.div 
+              <motion.div
                 initial={{ width: 0 }}
                 animate={{ width: `${Math.min((totalSavings / savingsGoal) * 100, 100)}%` }}
                 className="h-full bg-white rounded-full shadow-[0_0_15px_rgba(255,255,255,0.5)]"
@@ -101,7 +103,7 @@ export const GrowthCenter: React.FC<GrowthCenterProps> = ({
                   </span>
                 </div>
                 <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
-                  <motion.div 
+                  <motion.div
                     initial={{ width: 0 }}
                     animate={{ width: `${Math.min((b.spent / b.limit) * 100, 100)}%` }}
                     className={`h-full rounded-full ${b.spent > b.limit ? 'bg-rose-500' : 'bg-indigo-600'}`}
@@ -121,9 +123,9 @@ export const GrowthCenter: React.FC<GrowthCenterProps> = ({
           </h3>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {recommendations.map((rec, i) => (
-              <motion.div 
-                key={i} 
-                initial={{ opacity: 0, scale: 0.9 }} 
+              <motion.div
+                key={i}
+                initial={{ opacity: 0, scale: 0.9 }}
                 animate={{ opacity: 1, scale: 1 }}
                 transition={{ delay: i * 0.1 }}
                 className="bg-gradient-to-br from-amber-50 to-white p-6 rounded-3xl border border-amber-100 shadow-sm"
