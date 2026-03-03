@@ -1,29 +1,25 @@
 import React, { useState } from 'react';
 import { motion } from 'motion/react';
-import { Transaction, ClassificationResult } from '../services/geminiService';
+import { Transaction, ClassificationResult, CategoryConfig, Bucket503020, Jar6 } from '../services/geminiService';
 import { SalaryPeriod } from '../services/periodService';
 
 interface FinancialStrategiesProps {
     periodTransactions: Transaction[];
     classifications: Record<string, ClassificationResult | 'loading' | 'error'>;
     activePeriod: SalaryPeriod | null;
+    categories: CategoryConfig[];
 }
 
 type StrategyTab = '50-30-20' | '6-jarras';
 
-// Category buckets for 50/30/20
-const NEEDS_CATS = ['Arriendo', 'Cuentas Casa', 'Supermercado (Comida)', 'Ahorro Automático'];
-const WANTS_CATS = ['Entretenimiento', 'Gastos Chicos/Almacén', 'Transporte', 'Por Definir'];
-const SAVINGS_CATS = ['Ahorro Automático', 'Ingreso Roberto Mella'];
-
 // 6 Jars config
-const JARS = [
-    { key: 'necesidades', label: 'Necesidades', pct: 55, color: '#6366f1', emoji: '🏠', cats: ['Arriendo', 'Cuentas Casa', 'Supermercado (Comida)'] },
-    { key: 'ahorro_lp', label: 'Ahorro L/P', pct: 10, color: '#10b981', emoji: '💰', cats: ['Ahorro Automático'] },
-    { key: 'educacion', label: 'Educación', pct: 10, color: '#f59e0b', emoji: '📚', cats: [] },
-    { key: 'diversion', label: 'Diversión', pct: 10, color: '#ec4899', emoji: '🎉', cats: ['Entretenimiento'] },
-    { key: 'libertad', label: 'Libertad Fin.', pct: 10, color: '#8b5cf6', emoji: '📈', cats: [] },
-    { key: 'donaciones', label: 'Donaciones', pct: 5, color: '#14b8a6', emoji: '🙏', cats: [] },
+const JARS_CONFIG: Array<{ key: Jar6; label: string; pct: number; color: string; emoji: string }> = [
+    { key: 'Necesidades', label: 'Necesidades', pct: 55, color: '#6366f1', emoji: '🏠' },
+    { key: 'Ahorro LP', label: 'Ahorro L/P', pct: 10, color: '#10b981', emoji: '💰' },
+    { key: 'Educación', label: 'Educación', pct: 10, color: '#f59e0b', emoji: '📚' },
+    { key: 'Diversión', label: 'Diversión', pct: 10, color: '#ec4899', emoji: '🎉' },
+    { key: 'Libertad Fin.', label: 'Libertad Fin.', pct: 10, color: '#8b5cf6', emoji: '📈' },
+    { key: 'Donaciones', label: 'Donaciones', pct: 5, color: '#14b8a6', emoji: '🙏' },
 ];
 
 function getSpentByCategories(
@@ -58,9 +54,14 @@ function Bar({ pct, color, over }: { pct: number; color: string; over: boolean }
 export const FinancialStrategies: React.FC<FinancialStrategiesProps> = ({
     periodTransactions,
     classifications,
-    activePeriod
+    activePeriod,
+    categories
 }) => {
     const [tab, setTab] = useState<StrategyTab>('50-30-20');
+
+    // Helpers to get cats
+    const getCatsByBucket = (bucket: Bucket503020) => categories.filter(c => c.bucket === bucket).map(c => c.name);
+    const getCatsByJar = (jar: Jar6) => categories.filter(c => c.jar === jar).map(c => c.name);
 
     // Income = salary (abonos >= 700k)
     const income = periodTransactions
@@ -76,8 +77,8 @@ export const FinancialStrategies: React.FC<FinancialStrategiesProps> = ({
     }
 
     // 50/30/20
-    const needsSpent = getSpentByCategories(periodTransactions, classifications, NEEDS_CATS);
-    const wantsSpent = getSpentByCategories(periodTransactions, classifications, WANTS_CATS);
+    const needsSpent = getSpentByCategories(periodTransactions, classifications, getCatsByBucket('Necesidades'));
+    const wantsSpent = getSpentByCategories(periodTransactions, classifications, getCatsByBucket('Deseos'));
     const totalExpenses = periodTransactions.filter(t => t.tipo === 'cargo').reduce((a, t) => a + t.monto, 0);
     const actualSavings = income - totalExpenses;
 
@@ -151,12 +152,13 @@ export const FinancialStrategies: React.FC<FinancialStrategiesProps> = ({
 
             {tab === '6-jarras' && (
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-                    {JARS.map(jar => {
+                    {JARS_CONFIG.map(jar => {
                         const target = income * (jar.pct / 100);
-                        const actual = jar.cats.length > 0
-                            ? getSpentByCategories(periodTransactions, classifications, jar.cats)
+                        const jarCats = getCatsByJar(jar.key);
+                        const actual = jarCats.length > 0
+                            ? getSpentByCategories(periodTransactions, classifications, jarCats)
                             : 0;
-                        const fillPct = jar.cats.length > 0 ? (actual / target) * 100 : 0;
+                        const fillPct = jarCats.length > 0 ? (actual / target) * 100 : 0;
                         const over = actual > target;
 
                         return (
@@ -178,7 +180,7 @@ export const FinancialStrategies: React.FC<FinancialStrategiesProps> = ({
                                     </div>
                                 </div>
 
-                                {jar.cats.length > 0 ? (
+                                {jarCats.length > 0 ? (
                                     <div className={`text-xs font-semibold text-center ${over ? 'text-rose-500' : 'text-slate-600'}`}>
                                         ${actual.toLocaleString('es-CL')}
                                     </div>

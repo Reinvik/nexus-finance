@@ -31,13 +31,31 @@ export interface Transaction {
   fecha: string;
 }
 
+export type Bucket503020 = 'Necesidades' | 'Deseos' | 'Ahorro' | 'Ingreso' | 'Ignorar';
+export type Jar6 = 'Necesidades' | 'Ahorro LP' | 'Educación' | 'Diversión' | 'Libertad Fin.' | 'Donaciones' | 'Ingreso' | 'Ignorar';
+
+export interface CategoryConfig {
+  name: string;
+  bucket: Bucket503020;
+  jar: Jar6;
+}
+
 export interface ClassificationResult {
   categoria_asignada: string;
   estado_revision: 'oficial' | 'pendiente';
   razonamiento_breve: string;
 }
 
-export async function classifyTransaction(transaction: Transaction): Promise<ClassificationResult> {
+export interface ClassificationHistory {
+  descripcion: string;
+  categoria: string;
+}
+
+export async function classifyTransaction(
+  transaction: Transaction,
+  availableCategories: CategoryConfig[],
+  history: ClassificationHistory[]
+): Promise<ClassificationResult> {
   const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
   if (!apiKey) {
     throw new Error("GEMINI_API_KEY is not set");
@@ -45,11 +63,26 @@ export async function classifyTransaction(transaction: Transaction): Promise<Cla
 
   const ai = new GoogleGenAI({ apiKey });
 
+  const categoryNames = availableCategories.map(c => c.name).join(', ');
+
+  const historyText = history.length > 0
+    ? `HISTORIAL DE APRENDIZAJE DEL USUARIO:\nEl usuario ya ha clasificado transacciones similares así en el pasado. PRIVILEGIA ESTAS REGLAS por sobre las reglas estándar si hay coincidencias:\n${history.map(h => `- "${h.descripcion}" -> ${h.categoria}`).join('\n')}\n`
+    : '';
+
   const response = await ai.models.generateContent({
     model: "gemini-2.0-flash",
     contents: [
       {
-        text: `${SYSTEM_INSTRUCTIONS}\n\nTransacción a analizar:\n${JSON.stringify({
+        text: `${SYSTEM_INSTRUCTIONS}
+        
+CATEGORÍAS DISPONIBLES OBLIGATORIAS:
+Debes escoger EXACTAMENTE UNA de estas categorías, no inventes nuevas: 
+[${categoryNames}]
+
+${historyText}
+
+Transacción a analizar:
+${JSON.stringify({
           descripcion: transaction.descripcion,
           monto: transaction.monto,
           tipo: transaction.tipo

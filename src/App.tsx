@@ -6,7 +6,9 @@ import {
   getAIRecommendations,
   Transaction,
   ClassificationResult,
-  SavingsRecommendation
+  SavingsRecommendation,
+  CategoryConfig,
+  ClassificationHistory
 } from './services/geminiService';
 import { getSalaryPeriods, getTransactionsForPeriod } from './services/periodService';
 import { Sidebar } from './components/Sidebar';
@@ -18,23 +20,37 @@ import { CategoryManager } from './components/CategoryManager';
 import { supabase, DatabaseTransaction } from './services/supabaseClient';
 import { getFintoc } from '@fintoc/fintoc-js';
 
-const DEFAULT_CATEGORIES = [
-  "Sueldo", "Arriendo", "Ingreso Roberto Mella", "Cuentas Casa",
-  "Supermercado (Comida)", "Gastos Chicos/Almacén", "Por Definir",
-  "Entretenimiento", "Transporte", "Ahorro Automático"
+const DEFAULT_CATEGORIES: CategoryConfig[] = [
+  { name: "Sueldo", bucket: "Ingreso", jar: "Ingreso" },
+  { name: "Arriendo", bucket: "Necesidades", jar: "Necesidades" },
+  { name: "Ingreso Roberto Mella", bucket: "Ingreso", jar: "Ingreso" },
+  { name: "Cuentas Casa", bucket: "Necesidades", jar: "Necesidades" },
+  { name: "Supermercado (Comida)", bucket: "Necesidades", jar: "Necesidades" },
+  { name: "Gastos Chicos/Almacén", bucket: "Deseos", jar: "Diversión" },
+  { name: "Por Definir", bucket: "Ignorar", jar: "Ignorar" },
+  { name: "Entretenimiento", bucket: "Deseos", jar: "Diversión" },
+  { name: "Transporte", bucket: "Deseos", jar: "Diversión" },
+  { name: "Ahorro Automático", bucket: "Ahorro", jar: "Ahorro LP" }
 ];
 
 const STORAGE_KEY = 'nexus_categories';
 
-function loadCategories(): string[] {
+function loadCategories(): CategoryConfig[] {
   try {
     const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) return JSON.parse(saved) as string[];
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      // Migrate old string arrays to full objects if needed
+      if (Array.isArray(parsed) && typeof parsed[0] === 'string') {
+        return parsed.map(name => ({ name, bucket: 'Ignorar', jar: 'Ignorar' } as CategoryConfig));
+      }
+      return parsed as CategoryConfig[];
+    }
   } catch { /* ignore */ }
   return DEFAULT_CATEGORIES;
 }
 
-function saveCategories(cats: string[]) {
+function saveCategories(cats: CategoryConfig[]) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(cats));
 }
 
@@ -42,7 +58,7 @@ const COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'
 const USER_ID = '00000000-0000-0000-0000-000000000000';
 
 export default function App() {
-  const [categories, setCategories] = useState<string[]>(loadCategories);
+  const [categories, setCategories] = useState<CategoryConfig[]>(loadCategories);
   const [showCategoryManager, setShowCategoryManager] = useState(false);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [classifications, setClassifications] = useState<Record<string, ClassificationResult | 'loading' | 'error'>>({});
@@ -159,7 +175,7 @@ export default function App() {
   };
 
   // ─── Classification ────────────────────────────────────────────────
-  const handleCategoriesChange = (newCats: string[]) => {
+  const handleCategoriesChange = (newCats: CategoryConfig[]) => {
     setCategories(newCats);
     saveCategories(newCats);
   };
@@ -168,8 +184,18 @@ export default function App() {
     const transaction = transactions.find(t => t.id === id);
     if (!transaction) return;
     setClassifications(prev => ({ ...prev, [id]: 'loading' }));
+
+    // Build history of officially reviewed transactions to teach the AI
+    const history: ClassificationHistory[] = transactions
+      .filter(t => t.id !== id && classifications[t.id] && (classifications[t.id] as ClassificationResult).estado_revision === 'oficial')
+      .map(t => ({
+        descripcion: t.descripcion,
+        categoria: (classifications[t.id] as ClassificationResult).categoria_asignada
+      }))
+      .slice(0, 50); // limit to last 50 for token constraints
+
     try {
-      const result = await classifyTransaction(transaction);
+      const result = await classifyTransaction(transaction, categories, history);
       await supabase.from('transacciones').update({
         categoria_asignada: result.categoria_asignada,
         estado_revision: result.estado_revision,
@@ -346,7 +372,7 @@ export default function App() {
                 onManualClassify={handleManualClassify}
                 editingId={editingId}
                 setEditingId={setEditingId}
-                categories={categories}
+                categories={categories.map(c => c.name)}
               />
             )}
 
