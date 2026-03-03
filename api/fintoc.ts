@@ -15,9 +15,10 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 async function syncTransactions(userId: string, linkToken: string) {
     try {
+        // Correct Fintoc API format: secret_key as Authorization, link_token as query param
         const accountsRes = await axios.get(
-            `https://api.fintoc.com/v1/links/${linkToken}/accounts`,
-            { headers: { Authorization: FINTOC_SECRET_KEY } }
+            'https://api.fintoc.com/v1/accounts',
+            { headers: { Authorization: FINTOC_SECRET_KEY }, params: { link_token: linkToken } }
         );
 
         const accounts = accountsRes.data;
@@ -26,8 +27,8 @@ async function syncTransactions(userId: string, linkToken: string) {
         let totalSynced = 0;
         for (const account of accounts) {
             const movementsRes = await axios.get(
-                `https://api.fintoc.com/v1/links/${linkToken}/accounts/${account.id}/movements`,
-                { headers: { Authorization: FINTOC_SECRET_KEY } }
+                `https://api.fintoc.com/v1/accounts/${account.id}/movements`,
+                { headers: { Authorization: FINTOC_SECRET_KEY }, params: { link_token: linkToken, per_page: 300 } }
             );
 
             const movements = movementsRes.data;
