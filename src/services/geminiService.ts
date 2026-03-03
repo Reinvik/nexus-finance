@@ -196,18 +196,28 @@ export async function chatWithAI(
 
   const ai = new GoogleGenAI({ apiKey });
 
+  // Limit transactions to avoid huge token usage if there are too many (e.g. max 150)
+  const txData = context.transactions.slice(0, 150).map(t => ({
+    fecha: t.fecha,
+    descripcion: t.descripcion,
+    monto: t.monto,
+    tipo: t.tipo
+  }));
+
   const systemPrompt = `
     Eres Nexus AI, un asistente financiero experto.
     
     CONTEXTO ACTUAL:
     - Categorías configuradas: ${context.categories.map(c => c.name).join(', ')}
     - Instrucciones actuales de aprendizaje: ${context.customInstructions || 'Ninguna'}
-    - El usuario tiene ${context.transactions.length} transacciones en el periodo actual.
+    - Transacciones del periodo actual (JSON):
+    ${JSON.stringify(txData)}
     
     Capacidades:
     1. Sugiere reclasificaciones si detectas errores.
     2. Ayuda al usuario a definir nuevas reglas de categorización.
     3. Analiza gastos para optimizar el ahorro.
+    4. Responde preguntas sobre los gastos, fechas de sueldo (abonos), montos, o cualquier dato presente en las transacciones proporcionadas.
     
     REGLA: Si el usuario te da una regla nueva (Ej: "Pon DIDI en Transporte"), confírmala y explícitamente dile que ahora la has aprendido.
   `;
@@ -219,7 +229,7 @@ export async function chatWithAI(
   const fullPrompt = `${systemPrompt}\n\n${previousMessages}\nUsuario: ${prompt}\nAsistente:`;
 
   const response = await ai.models.generateContent({
-    model: "gemini-2.0-flash",
+    model: "gemini-2.5-flash",
     contents: [{ text: fullPrompt }]
   });
 
