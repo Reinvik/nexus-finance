@@ -133,30 +133,46 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
     }
 
-    // GET /api/fintoc/sync
+    // GET /api/fintoc/sync - fetch links from Fintoc API and sync
     if (method === 'GET' && url.includes('sync')) {
         try {
             const userId = (req.query?.userId as string) || '00000000-0000-0000-0000-000000000000';
             let linkToken = req.query?.linkToken as string | undefined;
 
-            // If link_token is provided, save/update it first
-            if (linkToken) {
-                await supabase.from('conexiones_bancarias').upsert([{
-                    user_id: userId,
-                    link_token: linkToken,
-                    institution: 'banco'
-                }], { onConflict: 'link_token' });
-            } else {
-                // Fall back to DB lookup
+            if (!linkToken) {
+                // Fetch list of links from Fintoc API to get the most recent one
+                console.log('[Sync] Fetching links from Fintoc API...');
+                try {
+                    const linksRes = await axios.get('https://api.fintoc.com/v1/links', {
+                        headers: { Authorization: FINTOC_SECRET_KEY }
+                    });
+                    const links = linksRes.data;
+                    console.log('[Sync] Fintoc links found:', links?.length, JSON.stringify(links?.[0]));
+                    if (links && links.length > 0) {
+                        linkToken = links[0].token || links[0].link_token || links[0].id;
+                        console.log('[Sync] Using link_token:', linkToken);
+                        if (linkToken) {
+                            await supabase.from('conexiones_bancarias').upsert([{
+                                user_id: userId,
+                                link_token: linkToken,
+                                institution: links[0].institution?.id || 'banco'
+                            }], { onConflict: 'link_token' });
+                        }
+                    }
+                } catch (apiErr: any) {
+                    console.error('[Sync] Error fetching links from Fintoc:', apiErr.response?.data || apiErr.message);
+                }
+            }
+
+            if (!linkToken) {
                 const { data: connections } = await supabase
                     .from('conexiones_bancarias')
                     .select('link_token')
                     .eq('user_id', userId)
                     .order('created_at', { ascending: false })
                     .limit(1);
-
                 if (!connections || connections.length === 0) {
-                    return res.status(404).json({ error: 'No bank connection found' });
+                    return res.status(404).json({ error: 'No bank connection found. Please reconnect your bank.' });
                 }
                 linkToken = connections[0].link_token;
             }
@@ -164,6 +180,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             await syncTransactions(userId, linkToken!);
             return res.json({ success: true });
         } catch (e: any) {
+            console.error('[Sync] Fatal error:', e.message);
             return res.status(500).json({ error: e.message });
         }
     }
