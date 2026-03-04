@@ -27,17 +27,17 @@ export const TransactionsModule: React.FC<TransactionsModuleProps> = ({
   categories
 }) => {
   return (
-    <motion.div 
-      initial={{ opacity: 0 }} 
-      animate={{ opacity: 1 }} 
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
     >
       <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
         <div className="p-6 border-b border-slate-100 flex items-center justify-between">
           <div className="relative w-64">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-            <input 
-              type="text" 
+            <input
+              type="text"
               placeholder="Filtrar transacciones..."
               className="w-full bg-slate-50 border-none rounded-full py-2 pl-10 pr-4 text-sm"
               value={searchTerm}
@@ -66,11 +66,19 @@ export const TransactionsModule: React.FC<TransactionsModuleProps> = ({
                   <tr key={t.id} className="group hover:bg-slate-50/50 transition-colors">
                     <td className="px-6 py-4">
                       <p className="text-sm font-bold">{t.descripcion}</p>
-                      <p className="text-xs text-slate-400">{t.fecha}</p>
+                      <div className="flex items-center gap-1.5 mt-0.5">
+                        <p className="text-xs text-slate-400">{t.fecha}</p>
+                        <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${t.tipo === 'abono'
+                            ? 'bg-emerald-50 text-emerald-600'
+                            : 'bg-red-50 text-red-500'
+                          }`}>
+                          {t.tipo === 'abono' ? '↓ Entrada' : '↑ Salida'}
+                        </span>
+                      </div>
                     </td>
                     <td className="px-6 py-4">
                       {isEditing ? (
-                        <select 
+                        <select
                           className="text-xs border rounded-lg p-1"
                           onChange={(e) => onManualClassify(t.id, e.target.value)}
                           defaultValue={isClassified ? (classification as ClassificationResult).categoria_asignada : ""}
@@ -87,8 +95,8 @@ export const TransactionsModule: React.FC<TransactionsModuleProps> = ({
                         <span className="text-xs text-slate-400 italic">Sin categorizar</span>
                       )}
                     </td>
-                    <td className="px-6 py-4 font-bold text-sm">
-                      ${t.monto.toLocaleString('es-CL')}
+                    <td className={`px-6 py-4 font-bold text-sm ${t.tipo === 'abono' ? 'text-emerald-600' : 'text-slate-700'}`}>
+                      {t.tipo === 'abono' ? '+' : '-'}${t.monto.toLocaleString('es-CL')}
                     </td>
                     <td className="px-6 py-4">
                       {isClassified && (
