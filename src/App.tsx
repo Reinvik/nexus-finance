@@ -198,14 +198,27 @@ export default function App() {
         holderType: 'individual',
         product: 'movements',
         country: 'cl',
-        onSuccess: async () => {
-          setLoadingFintoc(true); // Keep loading state
-          // Give the Vercel webhook 4 seconds to receive and process Fintoc data into Supabase
-          setTimeout(() => {
+        onSuccess: async (link_token: string) => {
+          try {
+            // Save the link_token directly to Supabase from the client
+            if (link_token) {
+              const { error } = await supabase
+                .from('conexiones_bancarias')
+                .upsert([{ user_id: USER_ID, link_token, institution: 'banco' }], { onConflict: 'link_token' });
+              if (error) console.error('[Fintoc] Error saving link_token:', error);
+              else console.log('[Fintoc] link_token saved, triggering sync...');
+            }
+            // Now trigger the server-side sync using this link_token
+            const syncRes = await fetch(`/api/fintoc/sync?userId=${USER_ID}`, { method: 'GET' });
+            const syncData = await syncRes.json();
+            console.log('[Fintoc] Sync result:', syncData);
+          } catch (err) {
+            console.error('[Fintoc] Error during post-connection sync:', err);
+          } finally {
             alert('¡Conexión bancaria sincronizada!');
             setLoadingFintoc(false);
             loadTransactions();
-          }, 4000);
+          }
         },
         onExit: () => setLoadingFintoc(false)
       });
