@@ -2,6 +2,12 @@
     "version": 2,
     "buildCommand": "npm run build",
     "outputDirectory": "dist",
+    "crons": [
+        {
+            "path": "/api/cron-sync",
+            "schedule": "0 10 * * *"
+        }
+    ],
     "rewrites": [
         {
             "source": "/api/fintoc/create-link-intent",
