@@ -43,34 +43,51 @@ async function syncTransactions(userId: string, linkToken: string) {
 
         let totalSynced = 0;
         for (const account of accounts) {
-            const params: any = { link_token: linkToken, per_page: 300 };
-            if (sinceParam) {
-                params.since = sinceParam;
+            let page = 1;
+            let hasMore = true;
+            let cursor: string | undefined = undefined;
+
+            while (hasMore) {
+                const params: any = { link_token: linkToken, per_page: 300, page };
+                if (sinceParam) params.since = sinceParam;
+                if (cursor) params.cursor = cursor;
+
+                const movementsRes = await axios.get(
+                    `https://api.fintoc.com/v1/accounts/${account.id}/movements`,
+                    { headers: { Authorization: FINTOC_SECRET_KEY }, params }
+                );
+
+                const movements = movementsRes.data;
+                if (!movements || movements.length === 0) break;
+
+                const dbRows = movements.map((m: any) => ({
+                    user_id: userId,
+                    fintoc_id: m.id,
+                    descripcion: m.description || 'Sin descripción',
+                    monto: Math.abs(m.amount),
+                    tipo: m.amount > 0 ? 'abono' : 'cargo',
+                    fecha: m.post_date ? m.post_date.split('T')[0] : new Date().toISOString().split('T')[0],
+                    estado_revision: 'pendiente'
+                }));
+
+                await supabase
+                    .from('transacciones')
+                    .upsert(dbRows, { onConflict: 'fintoc_id' });
+
+                totalSynced += dbRows.length;
+                console.log(`[Sync] Page ${page}: synced ${dbRows.length} movements (account ${account.id})`);
+
+                // Fintoc uses next_cursor for pagination; stop if fewer than per_page were returned
+                const nextCursor = movementsRes.headers?.['x-next-cursor'] || movementsRes.data?.next_cursor;
+                if (nextCursor) {
+                    cursor = nextCursor;
+                    page++;
+                } else if (movements.length < 300) {
+                    hasMore = false;
+                } else {
+                    page++;
+                }
             }
-
-            const movementsRes = await axios.get(
-                `https://api.fintoc.com/v1/accounts/${account.id}/movements`,
-                { headers: { Authorization: FINTOC_SECRET_KEY }, params }
-            );
-
-            const movements = movementsRes.data;
-            if (!movements || movements.length === 0) continue;
-
-            const dbRows = movements.map((m: any) => ({
-                user_id: userId,
-                fintoc_id: m.id,
-                descripcion: m.description || 'Sin descripción',
-                monto: Math.abs(m.amount),
-                tipo: m.amount > 0 ? 'abono' : 'cargo',
-                fecha: m.post_date ? m.post_date.split('T')[0] : new Date().toISOString().split('T')[0],
-                estado_revision: 'pendiente'
-            }));
-
-            await supabase
-                .from('transacciones')
-                .upsert(dbRows, { onConflict: 'fintoc_id' });
-
-            totalSynced += dbRows.length;
         }
 
         console.log(`[Sync] ${totalSynced} transactions synced`);
