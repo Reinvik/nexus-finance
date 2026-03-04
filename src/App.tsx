@@ -407,6 +407,7 @@ export default function App() {
                 colors={COLORS}
                 periodLabel={activePeriod?.label ?? 'Todos los periodos'}
                 periodTransactions={periodTransactions}
+                allTransactions={transactions}
                 classifications={classifications}
                 activePeriod={activePeriod}
                 categories={categories}
