@@ -149,8 +149,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                     const links = linksRes.data;
                     console.log('[Sync] Fintoc links found:', links?.length, JSON.stringify(links?.[0]));
                     if (links && links.length > 0) {
-                        linkToken = links[0].token || links[0].link_token || links[0].id;
-                        console.log('[Sync] Using link_token:', linkToken);
+                        // Fintoc returns link_token as null; use the id field which is the actual token
+                        linkToken = links[0].id;
+                        console.log('[Sync] Using link id as token:', linkToken);
                         if (linkToken) {
                             await supabase.from('conexiones_bancarias').upsert([{
                                 user_id: userId,
