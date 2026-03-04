@@ -108,8 +108,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // POST /api/fintoc/webhook
     if (method === 'POST' && url.includes('webhook')) {
         try {
-            const { link_token, holder_id } = req.body || {};
-            if (!link_token) return res.status(400).json({ error: 'Missing link_token' });
+            console.log('[Webhook] Received:', JSON.stringify(req.body));
+
+            const payload = req.body?.data || req.body || {};
+            const link_token = payload.link_token;
+            const holder_id = payload.institution?.id || payload.holder_id;
+
+            if (!link_token) {
+                console.error('[Webhook] Error: Missing link_token in payload');
+                return res.status(400).json({ error: 'Missing link_token' });
+            }
 
             const userId = '00000000-0000-0000-0000-000000000000';
             await supabase.from('conexiones_bancarias').upsert([{
