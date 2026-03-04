@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { AnimatePresence } from 'motion/react';
-import { RefreshCw, Sparkles, Settings2 } from 'lucide-react';
+import { RefreshCw, Sparkles, Settings2, Menu } from 'lucide-react';
 import {
   classifyTransaction,
   getAIRecommendations,
@@ -85,7 +85,16 @@ export default function App() {
     "Gastos Chicos/Almacén": 50000,
     "Entretenimiento": 80000
   });
+
+  const handleAddBudget = (category: string, limit: number) => {
+    setBudgets(prev => ({
+      ...prev,
+      [category]: limit
+    }));
+  };
+
   const [isChatOpen, setIsChatOpen] = useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   React.useEffect(() => {
     loadTransactions();
@@ -278,14 +287,22 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 font-sans">
-      <Sidebar activeView={view} onViewChange={setView} />
+      <Sidebar activeView={view} onViewChange={setView} isOpen={isMobileMenuOpen} setIsOpen={setIsMobileMenuOpen} />
 
       <main className="lg:ml-64 min-h-screen flex flex-col">
-        <header className="h-16 bg-white/80 backdrop-blur-md border-b border-slate-200 sticky top-0 z-40 px-6 flex items-center justify-between">
-          <h2 className="text-lg font-bold capitalize">
-            {view === 'dashboard' ? 'Centro de Crecimiento' : view === 'budgets' ? 'Protección de Ahorros' : 'Transacciones'}
-          </h2>
-          <div className="flex items-center gap-3">
+        <header className="h-16 bg-white/80 backdrop-blur-md border-b border-slate-200 sticky top-0 z-40 px-4 sm:px-6 flex items-center justify-between">
+          <div className="flex items-center gap-3 flex-1">
+            <button
+              onClick={() => setIsMobileMenuOpen(true)}
+              className="lg:hidden p-2 hover:bg-slate-100 text-slate-600 rounded-lg transition-colors"
+            >
+              <Menu className="w-6 h-6" />
+            </button>
+            <h2 className="text-lg font-bold capitalize">
+              {view === 'dashboard' ? 'Centro de Crecimiento' : view === 'budgets' ? 'Protección de Ahorros' : 'Transacciones'}
+            </h2>
+          </div>
+          <div className="flex items-center gap-2 sm:gap-3">
             <button
               onClick={() => setIsChatOpen(true)}
               className="p-2 hover:bg-indigo-50 text-indigo-600 rounded-full transition-colors relative"
@@ -368,6 +385,7 @@ export default function App() {
                 onGoalChange={setSavingsGoal}
                 budgets={budgets}
                 onBudgetChange={(cat, limit) => setBudgets(prev => ({ ...prev, [cat]: limit }))}
+                onAddBudget={handleAddBudget}
               />
             )}
           </AnimatePresence>

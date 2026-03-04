@@ -15,6 +15,23 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 async function syncTransactions(userId: string, linkToken: string) {
     try {
+        // Get the latest transaction date to use as 'since' parameter
+        const { data: latestTx } = await supabase
+            .from('transacciones')
+            .select('fecha')
+            .eq('user_id', userId)
+            .order('fecha', { ascending: false })
+            .limit(1);
+
+        let sinceParam = undefined;
+        if (latestTx && latestTx.length > 0) {
+            // Subtract 3 days to ensure no overlaps are missed due to timezone or weekend processing delays
+            const lastDate = new Date(latestTx[0].fecha + 'T00:00:00Z');
+            lastDate.setDate(lastDate.getDate() - 3);
+            sinceParam = lastDate.toISOString().split('T')[0];
+            console.log(`[Sync] Fetching movements since: ${sinceParam}`);
+        }
+
         // Correct Fintoc API format: secret_key as Authorization, link_token as query param
         const accountsRes = await axios.get(
             'https://api.fintoc.com/v1/accounts',
@@ -26,9 +43,14 @@ async function syncTransactions(userId: string, linkToken: string) {
 
         let totalSynced = 0;
         for (const account of accounts) {
+            const params: any = { link_token: linkToken, per_page: 300 };
+            if (sinceParam) {
+                params.since = sinceParam;
+            }
+
             const movementsRes = await axios.get(
                 `https://api.fintoc.com/v1/accounts/${account.id}/movements`,
-                { headers: { Authorization: FINTOC_SECRET_KEY }, params: { link_token: linkToken, per_page: 300 } }
+                { headers: { Authorization: FINTOC_SECRET_KEY }, params }
             );
 
             const movements = movementsRes.data;
