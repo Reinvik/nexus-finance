@@ -5,20 +5,26 @@ dotenv.config();
 const FINTOC_SECRET_KEY = process.env.FINTOC_API_KEY;
 const supabase = createClient(process.env.VITE_SUPABASE_URL, process.env.VITE_SUPABASE_ANON_KEY);
 const userId = '00000000-0000-0000-0000-000000000000';
-const linkId = 'link_8Y0GD4i3bPyZG2be';
+// Full format token: link_id + _token_ + access_token
+const linkToken = 'link_8Y0GD4i3bPyZG2be_token_oeSa-WFy5Jn7HZs5zZhLY81W';
 
 async function sync() {
-  console.log('Fetching accounts with link_token:', linkId);
+  // Save the correct token to DB first
+  await supabase.from('conexiones_bancarias').upsert([{
+    user_id: userId, link_token: linkToken, institution: 'cl_banco_estado'
+  }], { onConflict: 'link_token' });
+  console.log('Saved link_token to DB');
+
   const accountsRes = await axios.get('https://api.fintoc.com/v1/accounts', {
     headers: { Authorization: FINTOC_SECRET_KEY },
-    params: { link_token: linkId }
+    params: { link_token: linkToken }
   });
-  console.log('Accounts:', accountsRes.data.map(a => ({ id: a.id, name: a.name })));
+  console.log('Accounts:', accountsRes.data.map(a => a.id));
 
   for (const account of accountsRes.data) {
     const movRes = await axios.get('https://api.fintoc.com/v1/accounts/' + account.id + '/movements', {
       headers: { Authorization: FINTOC_SECRET_KEY },
-      params: { link_token: linkId, per_page: 300 }
+      params: { link_token: linkToken, per_page: 300 }
     });
     const movements = movRes.data;
     console.log('Movements for', account.id, ':', movements.length);
@@ -34,7 +40,7 @@ async function sync() {
     }));
     const { error } = await supabase.from('transacciones').upsert(rows, { onConflict: 'fintoc_id' });
     if (error) console.error('Upsert error:', error);
-    else console.log('Synced', rows.length, 'transactions');
+    else console.log('Synced', rows.length, 'transactions for account', account.id);
   }
 }
 sync();
