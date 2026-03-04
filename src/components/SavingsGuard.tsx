@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion } from 'motion/react';
-import { Plus } from 'lucide-react';
+import { Plus, Trash2 } from 'lucide-react';
 
 interface SavingsGuardProps {
   savingsGoal: number;
@@ -8,6 +8,7 @@ interface SavingsGuardProps {
   budgets: Record<string, number>;
   onBudgetChange: (category: string, limit: number) => void;
   onAddBudget: (category: string, limit: number) => void;
+  onDeleteBudget: (category: string) => void;
 }
 
 export const SavingsGuard: React.FC<SavingsGuardProps> = ({
@@ -15,7 +16,8 @@ export const SavingsGuard: React.FC<SavingsGuardProps> = ({
   onGoalChange,
   budgets,
   onBudgetChange,
-  onAddBudget
+  onAddBudget,
+  onDeleteBudget
 }) => {
   const [newCategory, setNewCategory] = useState('');
   const [newLimit, setNewLimit] = useState('');
@@ -52,8 +54,25 @@ export const SavingsGuard: React.FC<SavingsGuardProps> = ({
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {Object.entries(budgets).map(([cat, limit]) => (
-          <div key={cat} className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm group hover:border-indigo-200 transition-all">
-            <h4 className="font-bold mb-4 text-slate-700">{cat}</h4>
+          <div key={cat} className="bg-white p-6 rounded-3xl border border-slate-100 shadow-[0_8px_30px_rgb(0,0,0,0.04)] hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)] transition-all">
+            <div className="flex justify-between items-start mb-4">
+              <div>
+                <h4 className="font-bold text-slate-800 text-lg">{cat}</h4>
+                <p className="text-sm text-slate-500 mt-1">Límite mensual</p>
+              </div>
+              <div className="flex gap-2">
+                <div className="px-3 py-1 bg-indigo-50 text-indigo-700 rounded-full text-sm font-semibold">
+                  Activo
+                </div>
+                <button
+                  onClick={() => onDeleteBudget(cat)}
+                  className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                  title="Eliminar presupuesto"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
             <div className="flex items-center gap-4">
               <input
                 type="number"

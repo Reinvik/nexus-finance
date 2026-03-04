@@ -62,6 +62,31 @@ function saveCategories(cats: CategoryConfig[]) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(cats));
 }
 
+const STORAGE_KEY_BUDGETS = 'nexus_finance_budgets';
+
+const DEFAULT_BUDGETS: Record<string, number> = {
+  "Cuentas Casa": 100000,
+  "Supermercado (Comida)": 200000,
+  "Gastos Chicos/Almacén": 50000,
+  "Entretenimiento": 80000
+};
+
+function loadBudgets(): Record<string, number> {
+  const saved = localStorage.getItem(STORAGE_KEY_BUDGETS);
+  if (saved) {
+    try {
+      return JSON.parse(saved);
+    } catch (e) {
+      console.error('Error parsing budgets', e);
+    }
+  }
+  return DEFAULT_BUDGETS;
+}
+
+function saveBudgets(budgets: Record<string, number>) {
+  localStorage.setItem(STORAGE_KEY_BUDGETS, JSON.stringify(budgets));
+}
+
 const COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
 const USER_ID = '00000000-0000-0000-0000-000000000000';
 
@@ -79,18 +104,21 @@ export default function App() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [selectedPeriodIndex, setSelectedPeriodIndex] = useState<number>(0);
   const [savingsGoal, setSavingsGoal] = useState(1000000);
-  const [budgets, setBudgets] = useState<Record<string, number>>({
-    "Cuentas Casa": 100000,
-    "Supermercado (Comida)": 200000,
-    "Gastos Chicos/Almacén": 50000,
-    "Entretenimiento": 80000
-  });
+  const [budgets, setBudgets] = useState<Record<string, number>>(loadBudgets);
 
   const handleAddBudget = (category: string, limit: number) => {
     setBudgets(prev => ({
       ...prev,
       [category]: limit
     }));
+  };
+
+  const handleDeleteBudget = (category: string) => {
+    setBudgets(prev => {
+      const copy = { ...prev };
+      delete copy[category];
+      return copy;
+    });
   };
 
   const [isChatOpen, setIsChatOpen] = useState(false);
@@ -139,6 +167,10 @@ export default function App() {
   const salaryPeriods = useMemo(() => getSalaryPeriods(transactions), [transactions]);
 
   React.useEffect(() => {
+    saveBudgets(budgets);
+  }, [budgets]);
+
+  React.useEffect(() => {
     if (salaryPeriods.length > 0) {
       setSelectedPeriodIndex(prev => Math.min(prev, salaryPeriods.length - 1));
     }
@@ -167,9 +199,13 @@ export default function App() {
         product: 'movements',
         country: 'cl',
         onSuccess: async () => {
-          alert('¡Conexión bancaria exitosa!');
-          setLoadingFintoc(false);
-          loadTransactions();
+          setLoadingFintoc(true); // Keep loading state
+          // Give the Vercel webhook 4 seconds to receive and process Fintoc data into Supabase
+          setTimeout(() => {
+            alert('¡Conexión bancaria sincronizada!');
+            setLoadingFintoc(false);
+            loadTransactions();
+          }, 4000);
         },
         onExit: () => setLoadingFintoc(false)
       });
@@ -394,6 +430,7 @@ export default function App() {
                 budgets={budgets}
                 onBudgetChange={(cat, limit) => setBudgets(prev => ({ ...prev, [cat]: limit }))}
                 onAddBudget={handleAddBudget}
+                onDeleteBudget={handleDeleteBudget}
               />
             )}
           </AnimatePresence>
