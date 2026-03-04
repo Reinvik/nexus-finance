@@ -287,7 +287,15 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 font-sans">
-      <Sidebar activeView={view} onViewChange={setView} isOpen={isMobileMenuOpen} setIsOpen={setIsMobileMenuOpen} />
+      <Sidebar
+        activeView={view}
+        onViewChange={setView}
+        isOpen={isMobileMenuOpen}
+        setIsOpen={setIsMobileMenuOpen}
+        onSync={syncFintoc}
+        isSyncing={loadingFintoc}
+        onClassifyAll={handleClassifyAll}
+      />
 
       <main className="lg:ml-64 min-h-screen flex flex-col">
         <header className="h-16 bg-white/80 backdrop-blur-md border-b border-slate-200 sticky top-0 z-40 px-4 sm:px-6 flex items-center justify-between">

@@ -1,14 +1,17 @@
 import React from 'react';
-import { LayoutDashboard, TrendingUp, Wallet, Target, Settings, Sparkles } from 'lucide-react';
+import { LayoutDashboard, TrendingUp, Wallet, Target, Settings, Sparkles, RefreshCw } from 'lucide-react';
 
 interface SidebarProps {
   activeView: string;
   onViewChange: (view: 'dashboard' | 'transactions' | 'budgets') => void;
   isOpen: boolean;
   setIsOpen: (isOpen: boolean) => void;
+  onSync: () => void;
+  isSyncing: boolean;
+  onClassifyAll: () => void;
 }
 
-export const Sidebar: React.FC<SidebarProps> = ({ activeView, onViewChange, isOpen, setIsOpen }) => {
+export const Sidebar: React.FC<SidebarProps> = ({ activeView, onViewChange, isOpen, setIsOpen, onSync, isSyncing, onClassifyAll }) => {
   return (
     <>
       <div
@@ -42,6 +45,24 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeView, onViewChange, isOp
             active={activeView === 'budgets'}
             onClick={() => { onViewChange('budgets'); setIsOpen(false); }}
           />
+
+          <div className="pt-6 mt-6 border-t border-slate-100 space-y-2 lg:hidden">
+            <button
+              onClick={() => { onSync(); setIsOpen(false); }}
+              disabled={isSyncing}
+              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-emerald-600 text-white text-sm font-semibold rounded-xl hover:bg-emerald-700 transition-all shadow-sm shadow-emerald-100 disabled:opacity-60"
+            >
+              <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
+              {isSyncing ? 'Conectando...' : 'Conectar Banco'}
+            </button>
+            <button
+              onClick={() => { onClassifyAll(); setIsOpen(false); }}
+              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-indigo-600 text-white text-sm font-semibold rounded-xl hover:bg-indigo-700 transition-all shadow-sm shadow-indigo-100"
+            >
+              <Sparkles className="w-4 h-4" />
+              Clasificar Todo
+            </button>
+          </div>
         </nav>
 
         <div className="p-4 border-t border-slate-100">
@@ -70,8 +91,8 @@ const NavItem: React.FC<NavItemProps> = ({ icon, label, active, onClick }) => {
     <button
       onClick={onClick}
       className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold transition-all ${active
-          ? 'bg-indigo-50 text-indigo-700 shadow-sm'
-          : 'text-slate-500 hover:bg-slate-50 hover:text-slate-900'
+        ? 'bg-indigo-50 text-indigo-700 shadow-sm'
+        : 'text-slate-500 hover:bg-slate-50 hover:text-slate-900'
         }`}
     >
       {icon}
