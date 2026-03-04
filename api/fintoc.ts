@@ -137,18 +137,31 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (method === 'GET' && url.includes('sync')) {
         try {
             const userId = (req.query?.userId as string) || '00000000-0000-0000-0000-000000000000';
-            const { data: connections } = await supabase
-                .from('conexiones_bancarias')
-                .select('link_token')
-                .eq('user_id', userId)
-                .order('created_at', { ascending: false })
-                .limit(1);
+            let linkToken = req.query?.linkToken as string | undefined;
 
-            if (!connections || connections.length === 0) {
-                return res.status(404).json({ error: 'No bank connection found' });
+            // If link_token is provided, save/update it first
+            if (linkToken) {
+                await supabase.from('conexiones_bancarias').upsert([{
+                    user_id: userId,
+                    link_token: linkToken,
+                    institution: 'banco'
+                }], { onConflict: 'link_token' });
+            } else {
+                // Fall back to DB lookup
+                const { data: connections } = await supabase
+                    .from('conexiones_bancarias')
+                    .select('link_token')
+                    .eq('user_id', userId)
+                    .order('created_at', { ascending: false })
+                    .limit(1);
+
+                if (!connections || connections.length === 0) {
+                    return res.status(404).json({ error: 'No bank connection found' });
+                }
+                linkToken = connections[0].link_token;
             }
 
-            await syncTransactions(userId, connections[0].link_token);
+            await syncTransactions(userId, linkToken!);
             return res.json({ success: true });
         } catch (e: any) {
             return res.status(500).json({ error: e.message });

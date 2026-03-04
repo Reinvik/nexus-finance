@@ -200,16 +200,9 @@ export default function App() {
         country: 'cl',
         onSuccess: async (link_token: string) => {
           try {
-            // Save the link_token directly to Supabase from the client
-            if (link_token) {
-              const { error } = await supabase
-                .from('conexiones_bancarias')
-                .upsert([{ user_id: USER_ID, link_token, institution: 'banco' }], { onConflict: 'link_token' });
-              if (error) console.error('[Fintoc] Error saving link_token:', error);
-              else console.log('[Fintoc] link_token saved, triggering sync...');
-            }
-            // Now trigger the server-side sync using this link_token
-            const syncRes = await fetch(`/api/fintoc/sync?userId=${USER_ID}`, { method: 'GET' });
+            // Pass link_token to sync endpoint so server saves it and syncs atomically
+            const syncUrl = `/api/fintoc/sync?userId=${USER_ID}${link_token ? `&linkToken=${encodeURIComponent(link_token)}` : ''}`;
+            const syncRes = await fetch(syncUrl, { method: 'GET' });
             const syncData = await syncRes.json();
             console.log('[Fintoc] Sync result:', syncData);
           } catch (err) {
